@@ -2,7 +2,7 @@ import network
 import time
 import json
 import machine
-import mip  # NIEUW: MicroPython's officiële, lichte netwerk-downloader
+import mip  
 import gc  
 from machine import Pin
 from umqtt.simple import MQTTClient
@@ -15,10 +15,6 @@ MQTT_BROKER   = "192.168.1.217"
 MQTT_USER     = "mqttuser"
 MQTT_PASSWORD = "tggakcNwpX!6ptf"
 CLIENT_ID     = "pico2w_01"
-
-# GitHub gegevens voor de draadloze updates
-GITHUB_USER = "Pjotterx"  
-GITHUB_REPO = "pico2w_01_code"              
 
 # Home Assistant Topics
 DISCOVERY_LED = b"homeassistant/light/pico2w_01_led/config"
@@ -38,7 +34,7 @@ wlan.config(pm=0xa11140)
 if wlan.isconnected():
     print("Oude Wi-Fi verbinding resetten...")
     wlan.disconnect()
-    time.sleep(1)
+    time.sleep(2)
 
 print("Verbinden met WiFi...")
 wlan.connect(ssid, password)
@@ -59,22 +55,18 @@ if wlan.isconnected():
     print(f"Netwerkgegevens -> IP: {ip} | Gateway: {gateway} | DNS: {dns}")
     time.sleep(2)
     
-    # --- NIEUW: DRAADLOZE UPDATE VIA MIP ---
+    # --- DRAADLOZE UPDATE VIA MIP ---
     print("Geheugen opschonen voor update...")
     gc.collect()  
 
     print("Controleren op updates via MicroPython MIP...")
-    # We gebruiken de officiële, lichte HTTP-downloadroute van mip
-    # Let op: we downloaden hem hier tijdelijk als 'next_main.py' om crashes te voorkomen
-    URL_MIP = f"http://githubusercontent.com{GITHUB_USER}/{GITHUB_REPO}/main/main.py"
+    # DEFINITIEVE FIX: De URL is nu volledig uitgeschreven om typefouten te voorkomen!
+    URL_MIP = "https://githubusercontent.com"
 
     try:
-        # mip.install downloadt het bestand vlekkeloos via de interne C-code van de wifi-chip
         mip.install(URL_MIP, target="/next_main.py")
         print("Bestand succesvol gedownload via MIP!")
         
-        # We controleren of het bestand echt verschilt van onze huidige code
-        # Om het simpel te houden, overschrijven we main.py direct en starten we opnieuw op
         import os
         try:
             os.rename("/next_main.py", "/main.py")
@@ -85,7 +77,6 @@ if wlan.isconnected():
             print("Fout bij installeren van bestand:", file_err)
             
     except Exception as e:
-        # Als er geen update is of GitHub onbereikbaar is, gaan we gewoon door naar MQTT
         print("Geen update gevonden of MIP check overgeslagen:", e)
         
     gc.collect()  
@@ -122,7 +113,7 @@ if wlan.isconnected():
         
         shared_device = {
             "identifiers": ["pico2w_01_board"],
-            "name": "Raspberry Pi Pico 2W (02)",  # Pas dit aan op GitHub naar (02) om te testen!
+            "name": "Raspberry Pi Pico 2W (01)",  # Pas dit straks op GITHUB aan naar (02)!
             "model": "Pico 2 W",
             "manufacturer": "Raspberry Pi"
         }
