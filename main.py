@@ -3,7 +3,8 @@ import time
 import json
 import machine
 import senko  
-import ntptime  # NIEUW: Nodig om de netwerktijd op te halen
+import ntptime  
+import gc  
 from machine import Pin
 from umqtt.simple import MQTTClient
 
@@ -30,9 +31,11 @@ TOPIC_RESTART_CMD   = b"pico2w_01/restart/set"
 
 led = Pin("LED", Pin.OUT)
 wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
 
-# --- Wi-Fi verbinding ---
+# --- Wi-Fi verbinding met Energie-Fix ---
+wlan.active(True)
+wlan.config(pm=0xa11140)  
+
 if wlan.isconnected():
     print("Oude Wi-Fi verbinding resetten...")
     wlan.disconnect()
@@ -60,13 +63,14 @@ if wlan.isconnected():
     print("DNS succesvol ingesteld op 8.8.8.8!")
     time.sleep(2)
     
-    # --- NIEUW: Synchroniseer de interne klok met internet ---
+    # Synchroniseer de klok via een stabiele NL-tijdserver
     try:
         print("Tijd synchroniseren via NTP...")
+        ntptime.host = "nl.pool.ntp.org"  # Gebruik de Nederlandse tijdpool
         ntptime.settime()
         print("Klok succesvol gelijkgezet! Huidige tijd:", time.localtime())
     except Exception as ntp_err:
-        print("Tijd synchroniseren mislukt, GitHub certificaat kan weigeren:", ntp_err)
+        print("Tijd synchroniseren mislukt (Geen ramp, we gaan door):", ntp_err)
         
 else:
     led.off()
@@ -76,10 +80,17 @@ else:
 
 
 # --- DRAADLOZE UPDATE CHECK (OTA) ---
+print("Geheugen opschonen voor update-check...")
+gc.collect()  
+
 print("Controleren op updates via GitHub...")
+# CORRECTIE: Webadres hersteld naar de officiële raw-server van GitHub met schuine strepen
+HTTP_URL = f"http://githubusercontent.com{GITHUB_USER}/{GITHUB_REPO}/main"
+
 OTA = senko.Senko(
     user=GITHUB_USER,
     repo=GITHUB_REPO,
+    url=HTTP_URL,      
     branch="main",     
     files=["main.py"]  
 )
@@ -92,7 +103,9 @@ try:
     else:
         print("Code is up-to-date. Geen update nodig.")
 except Exception as e:
-    print("Update check mislukt (Geen internet of GitHub fout):", e)
+    print("Update check mislukt:", e)
+    
+gc.collect()  
 
 
 # --- MQTT Callback (Luisteren naar Home Assistant) ---
@@ -121,7 +134,7 @@ try:
     
     shared_device = {
         "identifiers": ["pico2w_01_board"],
-        "name": "Raspberry Pi Pico 2W (02)",  
+        "name": "Raspberry Pi Pico 2W (01)",  # Pas dit aan op GitHub naar (02) om te testen!
         "model": "Pico 2 W",
         "manufacturer": "Raspberry Pi"
     }
@@ -168,3 +181,4 @@ while True:
         print("Fout in hoofdprogramma, herstarten over 5s:", e)
         time.sleep(5)
         machine.reset()
+
