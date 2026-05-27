@@ -97,7 +97,7 @@ try:
     
     shared_device = {
         "identifiers": ["pico2w_01_board"],
-        "name": "Raspberry Pi Pico 2W (01)",
+        "name": "Raspberry Pi Pico 2W (02)",
         "model": "Pico 2 W",
         "manufacturer": "Raspberry Pi"
     }
