@@ -2,8 +2,7 @@ import network
 import time
 import json
 import machine
-import senko  
-import ntptime  
+import mip  # NIEUW: MicroPython's officiële, lichte netwerk-downloader
 import gc  
 from machine import Pin
 from umqtt.simple import MQTTClient
@@ -32,7 +31,7 @@ TOPIC_RESTART_CMD   = b"pico2w_01/restart/set"
 led = Pin("LED", Pin.OUT)
 wlan = network.WLAN(network.STA_IF)
 
-# --- Wi-Fi verbinding met Energie-Fix ---
+# --- Wi-Fi verbinding ---
 wlan.active(True)
 wlan.config(pm=0xa11140)  
 
@@ -44,7 +43,7 @@ if wlan.isconnected():
 print("Verbinden met WiFi...")
 wlan.connect(ssid, password)
 
-timeout = 30
+timeout = 120 
 while timeout > 0:
     if wlan.isconnected(): 
         break
@@ -57,55 +56,43 @@ if wlan.isconnected():
     print("Verbonden met Wi-Fi!")
     
     ip, mask, gateway, dns = wlan.ifconfig()
-    print(f"Netwerkgegevens -> IP: {ip} | Gateway: {gateway} | Oude DNS: {dns}")
-    
-    wlan.ifconfig((ip, mask, gateway, "8.8.8.8"))
-    print("DNS succesvol ingesteld op 8.8.8.8!")
+    print(f"Netwerkgegevens -> IP: {ip} | Gateway: {gateway} | DNS: {dns}")
     time.sleep(2)
     
-    # Synchroniseer de klok via een stabiele NL-tijdserver
+    # --- NIEUW: DRAADLOZE UPDATE VIA MIP ---
+    print("Geheugen opschonen voor update...")
+    gc.collect()  
+
+    print("Controleren op updates via MicroPython MIP...")
+    # We gebruiken de officiële, lichte HTTP-downloadroute van mip
+    # Let op: we downloaden hem hier tijdelijk als 'next_main.py' om crashes te voorkomen
+    URL_MIP = f"http://githubusercontent.com{GITHUB_USER}/{GITHUB_REPO}/main/main.py"
+
     try:
-        print("Tijd synchroniseren via NTP...")
-        ntptime.host = "nl.pool.ntp.org"  # Gebruik de Nederlandse tijdpool
-        ntptime.settime()
-        print("Klok succesvol gelijkgezet! Huidige tijd:", time.localtime())
-    except Exception as ntp_err:
-        print("Tijd synchroniseren mislukt (Geen ramp, we gaan door):", ntp_err)
+        # mip.install downloadt het bestand vlekkeloos via de interne C-code van de wifi-chip
+        mip.install(URL_MIP, target="/next_main.py")
+        print("Bestand succesvol gedownload via MIP!")
         
+        # We controleren of het bestand echt verschilt van onze huidige code
+        # Om het simpel te houden, overschrijven we main.py direct en starten we opnieuw op
+        import os
+        try:
+            os.rename("/next_main.py", "/main.py")
+            print("Update succesvol geïnstalleerd! Pico start opnieuw op...")
+            time.sleep(1)
+            machine.reset()
+        except Exception as file_err:
+            print("Fout bij installeren van bestand:", file_err)
+            
+    except Exception as e:
+        # Als er geen update is of GitHub onbereikbaar is, gaan we gewoon door naar MQTT
+        print("Geen update gevonden of MIP check overgeslagen:", e)
+        
+    gc.collect()  
+
 else:
     led.off()
-    print("Wi-Fi verbinding mislukt! Herstarten...")
-    time.sleep(5)
-    machine.reset()
-
-
-# --- DRAADLOZE UPDATE CHECK (OTA) ---
-print("Geheugen opschonen voor update-check...")
-gc.collect()  
-
-print("Controleren op updates via GitHub...")
-# CORRECTIE: Webadres hersteld naar de officiële raw-server van GitHub met schuine strepen
-HTTP_URL = f"http://githubusercontent.com{GITHUB_USER}/{GITHUB_REPO}/main"
-
-OTA = senko.Senko(
-    user=GITHUB_USER,
-    repo=GITHUB_REPO,
-    url=HTTP_URL,      
-    branch="main",     
-    files=["main.py"]  
-)
-
-try:
-    if OTA.update():
-        print("Nieuwe update gevonden en gedownload! Pico start opnieuw op...")
-        time.sleep(1)
-        machine.reset()  
-    else:
-        print("Code is up-to-date. Geen update nodig.")
-except Exception as e:
-    print("Update check mislukt:", e)
-    
-gc.collect()  
+    print("Wi-Fi verbinding mislukt!")
 
 
 # --- MQTT Callback (Luisteren naar Home Assistant) ---
@@ -125,60 +112,60 @@ def mqtt_callback(topic, msg):
             machine.reset()
 
 # --- Verbinden met MQTT & Discovery ---
-print("Verbinden met MQTT...")
-client = MQTTClient(CLIENT_ID, MQTT_BROKER, user=MQTT_USER, password=MQTT_PASSWORD)
-client.set_callback(mqtt_callback)
+if wlan.isconnected():
+    print("Verbinden met MQTT...")
+    client = MQTTClient(CLIENT_ID, MQTT_BROKER, user=MQTT_USER, password=MQTT_PASSWORD)
+    client.set_callback(mqtt_callback)
 
-try:
-    client.connect()
-    
-    shared_device = {
-        "identifiers": ["pico2w_01_board"],
-        "name": "Raspberry Pi Pico 2W (01)",  # Pas dit aan op GitHub naar (02) om te testen!
-        "model": "Pico 2 W",
-        "manufacturer": "Raspberry Pi"
-    }
-    
-    # LED aanmelden
-    led_payload = {
-        "name": "Ingebouwde LED",
-        "unique_id": "pico2w_01_built_in_led",
-        "state_topic": TOPIC_LED_STATE.decode(),
-        "command_topic": TOPIC_LED_CMD.decode(),
-        "payload_on": "ON",
-        "payload_off": "OFF",
-        "device": shared_device
-    }
-    client.publish(DISCOVERY_LED, json.dumps(led_payload), retain=True)
+    try:
+        client.connect()
+        
+        shared_device = {
+            "identifiers": ["pico2w_01_board"],
+            "name": "Raspberry Pi Pico 2W (01)",  # Pas dit aan op GitHub naar (02) om te testen!
+            "model": "Pico 2 W",
+            "manufacturer": "Raspberry Pi"
+        }
+        
+        # LED aanmelden
+        led_payload = {
+            "name": "Ingebouwde LED",
+            "unique_id": "pico2w_01_built_in_led",
+            "state_topic": TOPIC_LED_STATE.decode(),
+            "command_topic": TOPIC_LED_CMD.decode(),
+            "payload_on": "ON",
+            "payload_off": "OFF",
+            "device": shared_device
+        }
+        client.publish(DISCOVERY_LED, json.dumps(led_payload), retain=True)
 
-    # Herstart-knop aanmelden
-    restart_payload = {
-        "name": "Herstarten",
-        "unique_id": "pico2w_01_restart_btn",
-        "command_topic": TOPIC_RESTART_CMD.decode(),
-        "payload_press": "PRESS",
-        "device_class": "restart",
-        "device": shared_device
-    }
-    client.publish(DISCOVERY_RESTART, json.dumps(restart_payload), retain=True)
-    
-    client.subscribe(TOPIC_LED_CMD)
-    client.subscribe(TOPIC_RESTART_CMD)
-    
-    initial_state = b"ON" if led.value() else b"OFF"
-    client.publish(TOPIC_LED_STATE, initial_state, retain=True)
-    print("MQTT en Discovery actief!")
+        # Herstart-knop aanmelden
+        restart_payload = {
+            "name": "Herstarten",
+            "unique_id": "pico2w_01_restart_btn",
+            "command_topic": TOPIC_RESTART_CMD.decode(),
+            "payload_press": "PRESS",
+            "device_class": "restart",
+            "device": shared_device
+        }
+        client.publish(DISCOVERY_RESTART, json.dumps(restart_payload), retain=True)
+        
+        client.subscribe(TOPIC_LED_CMD)
+        client.subscribe(TOPIC_RESTART_CMD)
+        
+        initial_state = b"ON" if led.value() else b"OFF"
+        client.publish(TOPIC_LED_STATE, initial_state, retain=True)
+        print("MQTT en Discovery actief!")
 
-except Exception as e:
-    print("MQTT Fout:", e)
+    except Exception as e:
+        print("MQTT Fout:", e)
 
 # --- Hoofdprogramma ---
 while True:
     try:
-        client.check_msg()
+        if wlan.isconnected():
+            client.check_msg()
         time.sleep(0.2)
     except Exception as e:
-        print("Fout in hoofdprogramma, herstarten over 5s:", e)
+        print("Fout in hoofdprogramma:", e)
         time.sleep(5)
-        machine.reset()
-
