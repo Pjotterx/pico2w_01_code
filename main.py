@@ -2,7 +2,7 @@ import network
 import time
 import json
 import machine
-import senko  # NIEUW: Importeer de OTA bibliotheek
+import senko  # Importeer de OTA bibliotheek
 from machine import Pin
 from umqtt.simple import MQTTClient
 
@@ -10,14 +10,14 @@ from umqtt.simple import MQTTClient
 ssid = "Postema 2.4G"
 password = "Jard@Postema"
 
-MQTT_BROKER   = "192.168.1.217"  # HIER: IP-adres van je Home Assistant
+MQTT_BROKER   = "192.168.1.217"  # IP-adres van je Home Assistant
 MQTT_USER     = "mqttuser"
 MQTT_PASSWORD = "tggakcNwpX!6ptf"
 CLIENT_ID     = "pico2w_01"
 
 # GitHub gegevens voor de draadloze updates
-GITHUB_USER = "Pjotterx"  # HIER: Jouw GitHub naam
-GITHUB_REPO = "pico2w-01-code"              # HIER: Jouw repository naam
+GITHUB_USER = "Pjotterx"  
+GITHUB_REPO = "pico2w_01_code"              
 
 # Home Assistant Topics
 DISCOVERY_LED = b"homeassistant/light/pico2w_01_led/config"
@@ -31,32 +31,48 @@ led = Pin("LED", Pin.OUT)
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 
-# --- Wi-Fi verbinding ---
-while True:
-    if not wlan.isconnected():
-        print("Verbinden met WiFi...")
-        wlan.connect(ssid, password)
-        timeout = 30
-        while timeout > 0:
-            if wlan.isconnected(): break
-            led.toggle()
-            time.sleep(0.5)
-            timeout -= 1
-        if wlan.isconnected():
-            led.on()
-            print("Verbonden met Wi-Fi!")
-            break
-        else:
-            led.off()
-            time.sleep(3)
-    else:
-        break
+# --- Wi-Fi verbinding (Geforceerde frisse start) ---
+if wlan.isconnected():
+    print("Oude Wi-Fi verbinding resetten...")
+    wlan.disconnect()
+    time.sleep(1)
 
-# --- NIEUW: DRAADLOZE UPDATE CHECK (OTA) ---
+print("Verbinden met WiFi...")
+wlan.connect(ssid, password)
+
+timeout = 30
+while timeout > 0:
+    if wlan.isconnected(): 
+        break
+    led.toggle()
+    time.sleep(0.5)
+    timeout -= 1
+
+if wlan.isconnected():
+    led.on()
+    print("Verbonden met Wi-Fi!")
+    
+    # Haal IP-gegevens op en forceer DIRECT internettoegang via Google DNS
+    ip, mask, gateway, dns = wlan.ifconfig()
+    print(f"Netwerkgegevens -> IP: {ip} | Gateway: {gateway} | Oude DNS: {dns}")
+    
+    wlan.ifconfig((ip, mask, gateway, "8.8.8.8"))
+    print("DNS succesvol ingesteld op 8.8.8.8!")
+    
+    time.sleep(2) # Korte adempauze voor de netwerk-routing tabel
+else:
+    led.off()
+    print("Wi-Fi verbinding mislukt! Start over 5 seconden opnieuw op...")
+    time.sleep(5)
+    machine.reset()
+
+
+# --- DRAADLOZE UPDATE CHECK (OTA) ---
 print("Controleren op updates via GitHub...")
 OTA = senko.Senko(
     user=GITHUB_USER,
     repo=GITHUB_REPO,
+    branch="main",     # Expliciet naar de main branch kijken
     files=["main.py"]  # Het bestand dat hij up-to-date moet houden
 )
 
@@ -97,7 +113,7 @@ try:
     
     shared_device = {
         "identifiers": ["pico2w_01_board"],
-        "name": "Raspberry Pi Pico 2W (02)",
+        "name": "Raspberry Pi Pico 2W (01)",  # Pas dit aan op GitHub om te testen!
         "model": "Pico 2 W",
         "manufacturer": "Raspberry Pi"
     }
@@ -141,5 +157,6 @@ while True:
         client.check_msg()
         time.sleep(0.2)
     except Exception as e:
+        print("Fout in hoofdprogramma, herstarten over 5s:", e)
         time.sleep(5)
         machine.reset()
