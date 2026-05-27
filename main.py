@@ -113,7 +113,7 @@ if wlan.isconnected():
         
         shared_device = {
             "identifiers": ["pico2w_01_board"],
-            "name": "Raspberry Pi Pico 2W (01)",  # Pas dit straks op GITHUB aan naar (02)!
+            "name": "Raspberry Pi Pico 2W (02)",  # Pas dit straks op GITHUB aan naar (02)!
             "model": "Pico 2 W",
             "manufacturer": "Raspberry Pi"
         }
