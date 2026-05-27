@@ -2,7 +2,8 @@ import network
 import time
 import json
 import machine
-import senko  # Importeer de OTA bibliotheek
+import senko  
+import ntptime  # NIEUW: Nodig om de netwerktijd op te halen
 from machine import Pin
 from umqtt.simple import MQTTClient
 
@@ -10,7 +11,7 @@ from umqtt.simple import MQTTClient
 ssid = "Postema 2.4G"
 password = "Jard@Postema"
 
-MQTT_BROKER   = "192.168.1.217"  # IP-adres van je Home Assistant
+MQTT_BROKER   = "192.168.1.217"  
 MQTT_USER     = "mqttuser"
 MQTT_PASSWORD = "tggakcNwpX!6ptf"
 CLIENT_ID     = "pico2w_01"
@@ -31,7 +32,7 @@ led = Pin("LED", Pin.OUT)
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 
-# --- Wi-Fi verbinding (Geforceerde frisse start) ---
+# --- Wi-Fi verbinding ---
 if wlan.isconnected():
     print("Oude Wi-Fi verbinding resetten...")
     wlan.disconnect()
@@ -52,17 +53,24 @@ if wlan.isconnected():
     led.on()
     print("Verbonden met Wi-Fi!")
     
-    # Haal IP-gegevens op en forceer DIRECT internettoegang via Google DNS
     ip, mask, gateway, dns = wlan.ifconfig()
     print(f"Netwerkgegevens -> IP: {ip} | Gateway: {gateway} | Oude DNS: {dns}")
     
     wlan.ifconfig((ip, mask, gateway, "8.8.8.8"))
     print("DNS succesvol ingesteld op 8.8.8.8!")
+    time.sleep(2)
     
-    time.sleep(2) # Korte adempauze voor de netwerk-routing tabel
+    # --- NIEUW: Synchroniseer de interne klok met internet ---
+    try:
+        print("Tijd synchroniseren via NTP...")
+        ntptime.settime()
+        print("Klok succesvol gelijkgezet! Huidige tijd:", time.localtime())
+    except Exception as ntp_err:
+        print("Tijd synchroniseren mislukt, GitHub certificaat kan weigeren:", ntp_err)
+        
 else:
     led.off()
-    print("Wi-Fi verbinding mislukt! Start over 5 seconden opnieuw op...")
+    print("Wi-Fi verbinding mislukt! Herstarten...")
     time.sleep(5)
     machine.reset()
 
@@ -72,15 +80,15 @@ print("Controleren op updates via GitHub...")
 OTA = senko.Senko(
     user=GITHUB_USER,
     repo=GITHUB_REPO,
-    branch="main",     # Expliciet naar de main branch kijken
-    files=["main.py"]  # Het bestand dat hij up-to-date moet houden
+    branch="main",     
+    files=["main.py"]  
 )
 
 try:
     if OTA.update():
         print("Nieuwe update gevonden en gedownload! Pico start opnieuw op...")
         time.sleep(1)
-        machine.reset()  # Start direct opnieuw op met de gloednieuwe code
+        machine.reset()  
     else:
         print("Code is up-to-date. Geen update nodig.")
 except Exception as e:
@@ -113,7 +121,7 @@ try:
     
     shared_device = {
         "identifiers": ["pico2w_01_board"],
-        "name": "Raspberry Pi Pico 2W (01)",  # Pas dit aan op GitHub om te testen!
+        "name": "Raspberry Pi Pico 2W (02)",  
         "model": "Pico 2 W",
         "manufacturer": "Raspberry Pi"
     }
